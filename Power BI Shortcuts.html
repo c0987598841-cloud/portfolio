@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Power BI 快捷鍵助手</title>
+    <!-- 引入 SheetJS 處理 Excel/CSV -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --pbi-yellow: #f2c811;
+            --pbi-black: #333;
+            --bg-gray: #f8f9fa;
+        }
+        body { font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; background-color: var(--bg-gray); margin: 0; padding: 20px; }
+        .container { max-width: 1100px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--pbi-yellow); padding-bottom: 15px; margin-bottom: 20px; }
+        h1 { margin: 0; color: var(--pbi-black); font-size: 24px; }
+        
+        /* 工具列 */
+        .toolbar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .search-input { flex-grow: 1; padding: 10px 15px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-import { background-color: #eee; color: #333; }
+        .btn-export { background-color: var(--pbi-black); color: white; }
+        .btn:hover { opacity: 0.8; }
+
+        /* 表格樣式 */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 12px 15px; border-bottom: 1px solid #eee; }
+        th { background-color: #fcfcfc; color: #666; font-size: 14px; }
+        .category-tag { background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-size: 12px; color: #495057; }
+        kbd { 
+            background-color: #eee; border-radius: 3px; border: 1px solid #b4b4b4; box-shadow: 0 1px 1px rgba(0,0,0,0.2), 0 2px 0 0 rgba(255,255,255,0.7) inset;
+            color: #333; display: inline-block; font-size: 0.9em; font-weight: 700; line-height: 1; padding: 4px 7px; white-space: nowrap;
+        }
+        tr:hover { background-color: #fffdf2; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Power BI Shortcuts Helper</h1>
+        <div id="stats" style="font-size: 14px; color: #888;">正在載入資料...</div>
+    </header>
+
+    <div class="toolbar">
+        <input type="text" id="searchInput" class="search-input" placeholder="搜尋快捷鍵、功能或分類...">
+        <input type="file" id="fileInput" style="display: none;" accept=".csv, .xlsx">
+        <button class="btn btn-import" onclick="document.getElementById('fileInput').click()">匯入 CSV</button>
+        <button class="btn btn-export" onclick="App.handleExport()">匯出 Excel</button>
+    </div>
+
+    <table id="shortcutTable">
+        <thead>
+            <tr>
+                <th width="15%">分類</th>
+                <th width="20%">快捷鍵</th>
+                <th width="35%">功能描述</th>
+                <th width="30%">備註</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+            <!-- 資料將由 JS 生成 -->
+        </tbody>
+    </table>
+</div>
+
+<script>
+/**
+ * 核心架構：ExcelHelper Engine
+ */
+const App = {
+    rawContent: [], // 儲存原始 JSON 資料
+    filteredContent: [],
+
+    // 1. 初始化資料 (預載您提供的內容)
+    init() {
+        const defaultCSV = `Category,Shortcut,Description,Notes
+"全域與一般操作","Ctrl + S","儲存報表檔 (.pbix)","養成隨手儲存的好習慣"
+"全域與一般操作","Ctrl + Z","復原上一步","復原上一次的操作"
+"全域與一般操作","Ctrl + Y","重做（取消復原）","重新套用已取消的操作"
+"全域與一般操作","Ctrl + C","複製選取的物件或文字","可複製視覺物件或文字"
+"全域與一般操作","Ctrl + V","貼上複製的物件或文字","可貼上視覺物件或文字"
+"全域與一般操作","Ctrl + A","全選畫布上的視覺物件或文字","快速全選"
+"全域與一般操作","F5","重新整理資料來源","觸發資料模型整體 Re-fetch"
+"全域與一般操作","Ctrl + F","搜尋","在報表或特定窗格中搜尋"
+"全域與一般操作","Delete","刪除選取的物件或資料","快速移除元素"
+"全域與一般操作","Alt + F4","關閉 Power BI Desktop","安全退出應用程式"
+"全域與一般操作","Shift + ? 或 Ctrl + ?","顯示內建快捷鍵說明視窗","可在軟體內隨時查閱速查表"
+"報表畫布與視覺物件操作","Ctrl + G","將選取的多個視覺物件群組化","方便統一移動或管理介面版型"
+"報表畫布與視覺物件操作","Ctrl + Shift + G","解除視覺物件群組","將群組拆解為獨立物件"
+"報表畫布與視覺物件操作","Ctrl + Click (左鍵)","多選視覺物件 / 多選資料點","用於多圖表交叉篩選 (Cross-filtering)"
+"報表畫布與視覺物件操作","Up / Down / Left / Right","微調視覺物件位置 (每次 1 px)","精確對齊圖表元件"
+"報表畫布與視覺物件操作","Shift + 方向鍵","大幅移動視覺物件 (每次 10 px)","快速版面佈局"
+"報表畫布與視覺物件操作","Tab","在頁面上的視覺物件之間依序切換焦點","無障礙導航 / 簡報展示"
+"報表畫布與視覺物件操作","Shift + Tab","反向切換視覺物件焦點","反向無障礙導航"
+"報表畫布與視覺物件操作","Enter / Space","進入或啟用當前聚焦的視覺物件","深入圖表內部進行互動與選擇"
+"報表畫布與視覺物件操作","Esc","退出目前視覺物件的焦點回到畫布層級","返回上一層畫布導航"
+"報表畫布與視覺物件操作","Alt + Shift + F10","開啟目前視覺物件的標頭功能表 (Visual Header)","快速觸發匯出資料或聚焦模式"
+"報表畫布與視覺物件操作","Ctrl + F6","在主要區塊間切換焦點","免用滑鼠切換畫布、篩選器與欄位窗格"
+"DAX 編輯器 - 基本與格式化","Shift + Enter","在 DAX 公式中換行不執行","撰寫多行長公式必備"
+"DAX 編輯器 - 基本與格式化","Enter","接受自動補全建議或確定套用 DAX 公式","確認並執行提交"
+"DAX 編輯器 - 基本與格式化","Ctrl + Space","強制觸發 IntelliSense 自動補全選單","快速查找函數或欄位名稱"
+"DAX 編輯器 - 基本與格式化","Tab","縮排程式碼 (Indent) 或接受建議","提升代碼可讀性"
+"DAX 編輯器 - 基本與格式化","Shift + Tab","取消縮排 (Outdent)","減少縮排層級"
+"DAX 編輯器 - 基本與格式化","Ctrl + /","單行註解或取消註解 (//)","快速切換單行註解狀態"
+"DAX 編輯器 - 基本與格式化","Shift + Alt + A","區塊註解 (/* ... */)","多行區塊快速註解"
+"DAX 編輯器 - 多重游標與列操作","Alt + Up / Down","將當前行程式碼向上/向下移動","免去剪下貼上即可排版"
+"DAX 編輯器 - 多重游標與列操作","Shift + Alt + Up / Down","將當前行程式碼向上/向下複製一份","快速重複相似變數或邏輯"
+"DAX 編輯器 - 多重游標與列操作","Ctrl + Alt + Up / Down","在上方/下方新增多重游標","同時修改多行程式碼"
+"DAX 編輯器 - 多重游標與列操作","Alt + Click (左鍵)","在點擊位置新增額外游標","任意多點同時編輯"
+"DAX 編輯器 - 多重游標與列操作","Ctrl + D","選取下一個相同的單字","批次重命名變數或欄位"
+"DAX 編輯器 - 多重游標與列操作","Ctrl + Shift + L","一次選取目前文件中所有相同的單字","全域批次更換欄位或變數"
+"DAX 編輯器 - 多重游標與列操作","Ctrl + F","在 DAX 編輯器內搜尋","尋找指定關鍵字"
+"DAX 編輯器 - 多重游標與列操作","Ctrl + H","在 DAX 編輯器內搜尋並取代","批次替換文本內容"
+"Power Query 編輯器","Ctrl + Alt + R","重新整理當前查詢預覽 (Refresh Preview)","檢查資料轉型與清洗結果"
+"Power Query 編輯器","Alt + Down","開啟當前選取欄位的篩選與排序下拉選單","免滑鼠進行欄位過濾"
+"Power Query 編輯器","F2","重新命名選取的步驟 (Applied Steps) 或欄位名稱","建立易讀的查詢步驟與結構"
+"Power Query 編輯器","Delete","刪除選取的套用步驟或欄位","移除不必要的數據處理步驟"
+"Power Query 編輯器","Ctrl + Shift + ""+""","新增步驟或插入新欄位","快速插入公式步驟"
+"Power Query 編輯器","Up / Down / Left / Right","在預覽資料表格的儲存格間移動","預覽檢視數據"
+"Power Query 編輯器","Ctrl + A","選取預覽資料表中的所有欄位","批次選擇全表格欄位"
+"矩陣與資料表導航","Up / Down / Left / Right","在儲存格之間移動焦點","表格數據巡覽"
+"矩陣與資料表導航","Shift + Right","展開矩陣中當前的層級項目 (Expand)","查看下一層級細節數據"
+"矩陣與資料表導航","Shift + Left","摺疊矩陣中當前的層級項目 (Collapse)","收合層級數據"
+"矩陣與資料表導航","Home","移動到當前列的第一個儲存格","快速定位至行首"
+"矩陣與資料表導航","End","移動到當前列的最後一個儲存格","快速定位至行尾"
+"矩陣與資料表導航","Ctrl + Home","移動到表格的最左上角儲存格","定位至數據表起始位置"
+"矩陣與資料表導航","Ctrl + End","移動到表格的最右下角儲存格","定位至數據表末端位置"`;
+        
+        this.processRawString(defaultCSV);
+        this.setupEventListeners();
+    },
+
+    // 2. 檔案處理 (Parsing Layer)
+    processRawString(csvText) {
+        const workbook = XLSX.read(csvText, { type: 'string' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        this.rawContent = XLSX.utils.sheet_to_json(sheet);
+        this.filteredContent = [...this.rawContent];
+        this.render();
+    },
+
+    handleFileUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const data = event.target.result;
+            const workbook = XLSX.read(data, { type: 'binary' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            App.rawContent = XLSX.utils.sheet_to_json(sheet);
+            App.filteredContent = [...App.rawContent];
+            App.render();
+        };
+        reader.readAsBinaryString(file);
+    },
+
+    // 3. 邏輯與過濾 (Logic Layer)
+    handleSearch(e) {
+        const term = e.target.value.toLowerCase();
+        this.filteredContent = this.rawContent.filter(item => {
+            return Object.values(item).some(val => String(val).toLowerCase().includes(term));
+        });
+        this.render();
+    },
+
+    handleExport() {
+        const ws = XLSX.utils.json_to_sheet(this.filteredContent);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Shortcuts");
+        XLSX.writeFile(wb, "PowerBI_Shortcuts_Export.xlsx");
+    },
+
+    // 4. 渲染層 (UI Layer)
+    render() {
+        const tbody = document.getElementById('tableBody');
+        const stats = document.getElementById('stats');
+        
+        tbody.innerHTML = this.filteredContent.map(item => `
+            <tr>
+                <td><span class="category-tag">${item.Category || ''}</span></td>
+                <td><kbd>${item.Shortcut || ''}</kbd></td>
+                <td><strong>${item.Description || ''}</strong></td>
+                <td>${item.Notes || ''}</td>
+            </tr>
+        `).join('');
+
+        stats.innerText = `找到 ${this.filteredContent.length} 筆快捷鍵`;
+    },
+
+    setupEventListeners() {
+        document.getElementById('searchInput').addEventListener('input', (e) => this.handleSearch(e));
+        document.getElementById('fileInput').addEventListener('change', (e) => this.handleFileUpload(e));
+    }
+};
+
+// 啟動程式
+App.init();
+</script>
+
+</body>
+</html>
