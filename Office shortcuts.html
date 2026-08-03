@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Office 快捷鍵專業檢索系統</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --navy: #0d2b45;     /* 深藍：導航與標題 */
+            --green: #2d5a27;    /* 綠色：品牌主色 */
+            --gold: #c5a059;     /* 金色：點綴與強調 */
+            --bg: #f4f7f6;       /* 淺灰背景 */
+            --white: #ffffff;
+        }
+
+        body {
+            font-family: "PingFang TC", "Microsoft JhengHei", sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding-bottom: 50px;
+            color: #333;
+        }
+
+        /* 頂部導航 */
+        nav {
+            background-color: var(--navy);
+            padding: 25px 0;
+            color: var(--white);
+            text-align: center;
+            border-bottom: 4px solid var(--gold);
+        }
+        nav h1 { margin: 0; font-size: 1.6rem; letter-spacing: 3px; font-weight: bold; }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* 分類按鈕區 */
+        .filter-group {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 30px 0;
+        }
+
+        .filter-btn {
+            background: var(--white);
+            border: 1px solid var(--navy);
+            color: var(--navy);
+            padding: 8px 22px;
+            border-radius: 4px; /* 方正中帶圓角，較具工業感 */
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+
+        .filter-btn.active {
+            background: var(--green);
+            color: var(--white);
+            border-color: var(--green);
+        }
+
+        /* 搜尋與 AI 生成區 */
+        .action-bar {
+            background: var(--white);
+            padding: 20px;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        #searchBar {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+
+        .copy-btn {
+            background: var(--gold);
+            color: var(--navy);
+            border: none;
+            padding: 0 25px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .copy-btn:hover { background: #b38f4d; color: white; }
+
+        /* 卡片網格 */
+        .shortcut-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--white);
+            border-left: 6px solid var(--green);
+            padding: 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            position: relative;
+            transition: 0.3s;
+        }
+        .card:hover { transform: translateY(-3px); box-shadow: 0 6px 15px rgba(0,0,0,0.1); }
+
+        .card-software {
+            font-size: 0.7rem;
+            color: var(--gold);
+            font-weight: bold;
+            text-transform: uppercase;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: var(--navy);
+            margin-bottom: 12px;
+            height: 2.4em; /* 保持高度一致 */
+            display: flex;
+            align-items: center;
+        }
+
+        .key-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f9f9f9;
+            padding: 8px 10px;
+            border-radius: 3px;
+            margin-top: 6px;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+        }
+
+        .key-label { font-size: 0.7rem; color: #888; font-weight: bold; }
+        .key-value { font-size: 0.85rem; color: #d32f2f; font-weight: bold; text-align: right; }
+
+        @media (max-width: 600px) {
+            .action-bar { flex-direction: column; }
+            .copy-btn { height: 45px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="container">
+        <h1>OFFICE 快捷鍵精選庫 ‧ AI 助手</h1>
+    </div>
+</nav>
+
+<div class="container">
+    <div id="softwareButtons" class="filter-group">
+        <!-- 動態按鈕 -->
+    </div>
+
+    <div class="action-bar">
+        <input type="text" id="searchBar" placeholder="請輸入功能關鍵字（例如：貼上、分頁、隱藏）...">
+        <button class="copy-btn" onclick="copyAsPrompt()">複製 AI 提示詞</button>
+    </div>
+
+    <div id="statusText" style="color: var(--green); margin-bottom: 15px; font-weight: bold;"></div>
+
+    <div id="shortcutGrid" class="shortcut-grid">
+        <!-- 內容渲染 -->
+    </div>
+</div>
+
+<script>
+    let allData = [];
+    let currentTag = '全部';
+
+    // 這裡放入你提供的完整快捷鍵清單
+    const rawCSV = `軟體名稱,軟體標籤,分類主題,Windows 快捷鍵,Mac 快捷鍵,功能說明
+跨軟體通用,通用,檔案管理,Ctrl + N,Cmd + N,新建檔案
+跨軟體通用,通用,檔案管理,Ctrl + O,Cmd + O,開啟檔案
+跨軟體通用,通用,檔案管理,Ctrl + S,Cmd + S,儲存檔案
+跨軟體通用,通用,檔案管理,F12,Cmd + Shift + S,另存新檔
+跨軟體通用,通用,檔案管理,Ctrl + P,Cmd + P,列印檔案
+跨軟體通用,通用,檔案管理,Ctrl + W,Cmd + W,關閉當前文件
+跨軟體通用,通用,編輯,Ctrl + Z,Cmd + Z,復原上一步
+跨軟體通用,通用,編輯,Ctrl + Y,Cmd + Y,重做
+跨軟體通用,通用,編輯,Ctrl + X,Cmd + X,剪下
+跨軟體通用,通用,編輯,Ctrl + C,Cmd + C,複製
+跨軟體通用,通用,編輯,Ctrl + V,Cmd + V,貼上
+跨軟體通用,通用,編輯,Ctrl + Alt + V,Cmd + Control + V,選擇性貼上
+跨軟體通用,通用,編輯,Ctrl + A,Cmd + A,全選
+跨軟體通用,通用,編輯,Ctrl + F,Cmd + F,尋找
+跨軟體通用,通用,編輯,Ctrl + H,Cmd + Shift + H,替換
+Microsoft Excel,Excel,導覽,Ctrl + 箭頭鍵,Cmd + 箭頭鍵,跳轉至資料區塊邊界
+Microsoft Excel,Excel,導覽,Ctrl + Home,Cmd + Home,跳轉至儲存格 A1
+Microsoft Excel,Excel,編輯,F2,Control + U,編輯當前儲存格
+Microsoft Excel,Excel,編輯,Alt + Enter,Option + Return,儲存格內強行換行
+Microsoft Excel,Excel,編輯,Ctrl + ;,Cmd + ;,插入當前日期
+Microsoft Excel,Excel,編輯,Ctrl + Shift + ;,Cmd + Shift + ;,插入當前時間
+Microsoft Excel,Excel,編輯,Ctrl + D,Cmd + D,向下填滿
+Microsoft Excel,Excel,編輯,Ctrl + R,Cmd + R,向右填滿
+Microsoft Excel,Excel,編輯,Ctrl + E,Cmd + E,執行快速填充 (Flash Fill)
+Microsoft Excel,Excel,公式,Alt + =,Cmd + Shift + T,自動插入 SUM 加總
+Microsoft Excel,Excel,公式,F4,Cmd + T,切換絕對參照
+Microsoft Excel,Excel,格式,Ctrl + 1,Cmd + 1,開啟儲存格格式
+Microsoft Excel,Excel,表格,Ctrl + T,Cmd + T,轉換為表格
+Microsoft Excel,Excel,欄列,Ctrl + 9,Cmd + 9,隱藏選取的列
+Microsoft Excel,Excel,欄列,Ctrl + 0,Cmd + 0,隱藏選取的欄
+Microsoft Word,Word,對齊,Ctrl + L,Cmd + L,靠左對齊
+Microsoft Word,Word,對齊,Ctrl + R,Cmd + R,靠右對齊
+Microsoft Word,Word,對齊,Ctrl + E,Cmd + E,置中對齊
+Microsoft Word,Word,對齊,Ctrl + J,Cmd + J,左右對齊
+Microsoft Word,Word,樣式,Alt + Ctrl + 1,Cmd + Opt + 1,套用標題 1
+Microsoft Word,Word,插入,Ctrl + Enter,Cmd + Return,插入分頁符號
+Microsoft PowerPoint,PPT,投影片,Ctrl + M,Cmd + Shift + N,插入新投影片
+Microsoft PowerPoint,PPT,物件,Ctrl + G,Cmd + Opt + G,群組化物件
+Microsoft PowerPoint,PPT,放映,F5,Cmd + Return,從第一張開始放映
+Microsoft PowerPoint,PPT,放映,Shift + F5,Cmd + Shift + Return,從當前頁開始放映
+Microsoft PowerPoint,PPT,放映,B,B,螢幕黑屏
+Microsoft PowerPoint,PPT,放映,W,W,螢幕白屏
+Microsoft Outlook,Outlook,切換,Ctrl + 1,Cmd + 1,切換至郵件
+Microsoft Outlook,Outlook,切換,Ctrl + 2,Cmd + 2,切換至行事曆
+Microsoft Outlook,Outlook,郵件,Ctrl + N,Cmd + N,建立新郵件
+Microsoft Outlook,Outlook,郵件,Ctrl + R,Cmd + R,回覆郵件
+Microsoft Outlook,Outlook,郵件,Ctrl + Enter,Cmd + Return,傳送郵件`;
+
+    window.onload = () => {
+        const workbook = XLSX.read(rawCSV, { type: 'string' });
+        allData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+        
+        const tags = ['全部', ...new Set(allData.map(item => item.軟體標籤))];
+        const btnContainer = document.getElementById('softwareButtons');
+        btnContainer.innerHTML = tags.map(tag => 
+            `<button class="filter-btn ${tag === '全部' ? 'active' : ''}" onclick="filterBy('${tag}', this)">${tag}</button>`
+        ).join('');
+
+        renderGrid();
+    };
+
+    function filterBy(tag, btn) {
+        currentTag = tag;
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderGrid();
+    }
+
+    document.getElementById('searchBar').addEventListener('input', renderGrid);
+
+    function renderGrid() {
+        const keyword = document.getElementById('searchBar').value.toLowerCase();
+        const filtered = allData.filter(item => {
+            const matchesSoftware = (currentTag === '全部' || item.軟體標籤 === currentTag);
+            const matchesKeyword = Object.values(item).some(val => String(val).toLowerCase().includes(keyword));
+            return matchesSoftware && matchesKeyword;
+        });
+
+        const grid = document.getElementById('shortcutGrid');
+        document.getElementById('statusText').innerText = `找到 ${filtered.length} 筆對應快捷鍵`;
+        
+        grid.innerHTML = filtered.map(row => `
+            <div class="card">
+                <span class="card-software">${row.軟體標籤} ‧ ${row.分類主題}</span>
+                <div class="card-title">${row.功能說明}</div>
+                <div class="key-row">
+                    <span class="key-label">WINDOWS</span>
+                    <span class="key-value">${row['Windows 快捷鍵']}</span>
+                </div>
+                <div class="key-row">
+                    <span class="key-label">MACOS</span>
+                    <span class="key-value">${row['Mac 快捷鍵']}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function copyAsPrompt() {
+        const keyword = document.getElementById('searchBar').value;
+        const filtered = allData.filter(item => {
+            const matchesSoftware = (currentTag === '全部' || item.軟體標籤 === currentTag);
+            const matchesKeyword = Object.values(item).some(val => String(val).toLowerCase().includes(keyword.toLowerCase()));
+            return matchesSoftware && matchesKeyword;
+        });
+
+        if (filtered.length === 0) return alert('目前無篩選內容');
+
+        const prompt = `請參考以下 Office 快捷鍵清單，針對「${keyword || '日常辦公'}」提供效率優化建議：\n\n` + 
+            filtered.slice(0, 30).map(d => `- [${d.軟體標籤}] ${d.功能說明}: Win(${d['Windows 快捷鍵']}) / Mac(${d['Mac 快捷鍵']})`).join('\n') +
+            `\n\n請以專家的角度分析這些快捷鍵的組合技。`;
+
+        navigator.clipboard.writeText(prompt).then(() => alert('AI 提示詞已複製！'));
+    }
+</script>
+
+</body>
+</html>
